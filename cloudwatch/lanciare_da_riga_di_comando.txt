@@ -4,7 +4,7 @@ podman build -t cloudwatch-tail .
 # create .env
 
 # avvia container
-podman run --rm -it --env-file .env cloudwatch-tail --since 1h --filter utility 
+podman run --rm -it --env-file .env cloudwatch-tail --since 1h --filter utility --severity ERROR
 
 # rimuovi immagine
 podman rmi cloudwatch-tail
