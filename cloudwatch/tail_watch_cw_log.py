@@ -42,7 +42,9 @@ print("🌍 AWS_DEFAULT_REGION:", os.getenv('AWS_DEFAULT_REGION'))
 print(f"🎯 Filtro stream: '{LOG_STREAM_FILTER}', da {SINCE} fa")
 
 client = boto3.client('logs')
-LOG_GROUP = '/aws/eks/eks-tibco-test-cluster'
+LOG_GROUP=os.getenv('LOG_GROUP')
+
+print("🔐 LOG_GROUP:", LOG_GROUP)
 
 def get_first_stream_with_events():
     print("🔍 Cerco log stream attivo...")
@@ -105,7 +107,33 @@ def tail_log(stream_name):
     except Exception as e:
         print("❌ Errore:", e)
 
+def list_log_groups(region='eu-south-1'):
+    """
+    Restituisce una lista dei nomi dei log group nella regione specificata.
+    """
+    try:
+        client = boto3.client('logs', region_name=region)
+        log_groups = []
+        paginator = client.get_paginator('describe_log_groups')
+
+        for page in paginator.paginate():
+            for group in page.get('logGroups', []):
+                log_groups.append(group['logGroupName'])
+
+        return log_groups
+
+    except (BotoCoreError, ClientError) as e:
+        print(f"❌ Errore AWS: {e}")
+        return []
+
+def print_log_groups():
+    log_groups = list_log_groups()
+    print("📋 Log groups trovati:")
+    for lg in log_groups:
+        print(f" - {lg}")
+        
 if __name__ == "__main__":
+    # print_log_groups()
     stream = get_first_stream_with_events()
     if stream:
         tail_log(stream)

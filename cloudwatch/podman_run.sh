@@ -13,6 +13,49 @@ info() {
   echo "⟳ $1"
 }
 
+cleanup() {
+  info "Rimuovo il file temporaneo .env"
+  rm -f .env
+}
+
+trap cleanup EXIT INT TERM
+
+# ---------------------------------------------------
+# Parsing argomenti
+# ---------------------------------------------------
+ENV_SUFFIX=""
+POSITIONAL_ARGS=()
+TARGET_FILE=".env"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -env|--env)
+      ENV_SUFFIX="$2"
+      shift 2
+      ;;
+    -h|--help)
+      info "Uso: $0 [-env <ambiente>] [altri argomenti]"
+      info "Esempio: $0 -env prod log-group-name"
+      exit 0
+      ;;
+    -*)
+      error_exit "Opzione sconosciuta: $1"
+      ;;
+    *)
+      POSITIONAL_ARGS+=("$1")
+      shift
+      ;;
+  esac
+done
+
+# Reimposta gli argomenti posizionali finali
+if [ ${#POSITIONAL_ARGS[@]} -gt 0 ]; then
+  set -- "${POSITIONAL_ARGS[@]}"
+else
+  set --
+fi
+
+
 # ---------------------------------------------------
 # 1. Controlla che podman sia installato
 # ---------------------------------------------------
@@ -21,20 +64,29 @@ if ! command -v podman >/dev/null 2>&1; then
 fi
 
 # ---------------------------------------------------
-# 2. Verifica presenza file .env
+# 2. Verifica presenza file .env (dinamico)
 # ---------------------------------------------------
 ENV_FILE=".env"
-if [ ! -f "$ENV_FILE" ]; then
+if [ -n "$ENV_SUFFIX" ]; then
+  ENV_FILE=".env.${ENV_SUFFIX}"
+else 
+  ENV_FILE=".env.dev"
+fi
+
+info "Usando file di ambiente: ${ENV_FILE}"
+cp "$ENV_FILE" "$TARGET_FILE"
+
+if [ ! -f "$TARGET_FILE" ]; then
   error_exit "file '$ENV_FILE' non trovato. Crea '$ENV_FILE' con le variabili d'ambiente necessarie prima di eseguire lo script."
 fi
 
 # ---------------------------------------------------
-# Configurazione
+# 3. Configurazione immagine
 # ---------------------------------------------------
 IMAGE_NAME="cloudwatch-tail"
 
 # ---------------------------------------------------
-# 3. Costruzione dell’immagine
+# 4. Costruzione immagine
 # ---------------------------------------------------
 info "Inizio build dell'immagine '$IMAGE_NAME'..."
 if ! podman build -t "$IMAGE_NAME" .; then
@@ -43,17 +95,20 @@ fi
 info "Build completata con successo."
 
 # ---------------------------------------------------
-# 4. Avvio del container
+# 5. Avvio del container
 # ---------------------------------------------------
+if [ $# -eq 0 ]; then
+  info "Nessun argomento passato al container."
+fi
+
 info "Avvio del container '$IMAGE_NAME'..."
 if ! podman run --rm -it \
-    --env-file "$ENV_FILE" \
+    --env-file "$TARGET_FILE" \
     "$IMAGE_NAME" "$@"; then
   error_exit "avvio del container fallito. 
-- Verifica i parametri passati (\$@): $* 
-- Controlla il contenuto di '$ENV_FILE' 
-- Verificare se esistono log richiesti con parametri '$@' 
-- Assicurati che l’immagine esista con 'podman images'."
+- Verifica i parametri passati: $* 
+- Controlla il contenuto di '$TARGET_FILE' 
+- Assicurati che l’immagine esista con 'podman images'"
 fi
 
 info "Container terminato correttamente."
