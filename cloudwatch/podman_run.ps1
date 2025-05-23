@@ -8,7 +8,7 @@ param(
     [string]$Severity = "ERROR"
 )
 
-Write-Host "🔧 Costruzione immagine Docker 'cloudwatch-tail'..."
+Write-Host "Costruzione immagine Docker 'cloudwatch-tail'..."
 podman build -t cloudwatch-tail . | Write-Output
 
 if (-Not (Test-Path ".env")) {
