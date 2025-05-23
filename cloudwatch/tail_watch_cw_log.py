@@ -17,6 +17,8 @@ load_dotenv()
 parser = argparse.ArgumentParser()
 parser.add_argument('--filter', default='utility', help="Filtro log stream name")
 parser.add_argument('--since', default='5m', help="Quanto indietro nei log (es: 30m, 1h, 2h)")
+parser.add_argument('--severity', default='', help="Filtra solo log che contengono questa stringa (es: ERROR, WARN, INFO)")
+
 args = parser.parse_args()
 
 LOG_STREAM_FILTER = args.filter
@@ -35,7 +37,9 @@ def parse_duration(dur):
 
 # Calcolo start time
 duration = parse_duration(SINCE)
-start_time = int((datetime.datetime.now() - duration).timestamp() * 1000)
+# start_time = int((datetime.datetime.now() - duration).timestamp() * 1000) # ROME
+start_time = int((datetime.datetime.now(datetime.timezone.utc) - duration).timestamp() * 1000) # UTC
+
 
 print("🔐 AWS_ACCESS_KEY_ID:", os.getenv('AWS_ACCESS_KEY_ID'))
 print("🌍 AWS_DEFAULT_REGION:", os.getenv('AWS_DEFAULT_REGION'))
@@ -71,7 +75,8 @@ def get_first_stream_with_events():
     print("⚠️ Nessun log stream trovato.")
     return None
 
-def tail_log(stream_name):
+def tail_log(stream_name, severity_filter=""):
+    severity_filter = severity_filter.upper()
     print(f"📡 Tailing stream: {stream_name}")
     next_token = None
     try:
@@ -96,7 +101,20 @@ def tail_log(stream_name):
                 for event in events:
                     ts = datetime.datetime.utcfromtimestamp(event['timestamp'] / 1000.0)
                     msg = event['message'].strip()
-                    print(f"[{ts}] {msg}", flush=True)
+                    # print(f"[{ts}] {msg}", flush=True)
+                    import json
+                    msg = event['message'].strip()
+                    try:
+                        parsed = json.loads(msg)
+                        log_line = parsed.get('log', msg)
+                    except json.JSONDecodeError:
+                        log_line = msg
+
+                    if severity_filter and severity_filter in log_line.upper():
+                        print(f"[{ts}] ❗ {log_line}", flush=True)
+                    else:
+                        print(f"[{ts}] {log_line}", flush=True)
+
 
             if token == next_token:
                 time.sleep(2)
@@ -133,9 +151,8 @@ def print_log_groups():
         print(f" - {lg}")
         
 if __name__ == "__main__":
-    # print_log_groups()
     stream = get_first_stream_with_events()
     if stream:
-        tail_log(stream)
+        tail_log(stream, args.severity)
     else:
         exit(1)

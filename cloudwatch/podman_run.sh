@@ -34,9 +34,14 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     -h|--help)
-      info "Uso: $0 [-env <ambiente>] [altri argomenti]"
-      info "Esempio: $0 -env prod log-group-name"
+      echo "Uso: $0 [-env <ambiente>] -- [argomenti da passare al container]"
+      echo "Esempio: $0 -env prod -- --since 1h --filter utility"
       exit 0
+      ;;
+    --)
+      shift
+      POSITIONAL_ARGS+=("$@")
+      break
       ;;
     -*)
       error_exit "Opzione sconosciuta: $1"
@@ -47,6 +52,7 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
 
 # Reimposta gli argomenti posizionali finali
 if [ ${#POSITIONAL_ARGS[@]} -gt 0 ]; then
