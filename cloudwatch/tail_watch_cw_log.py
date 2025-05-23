@@ -115,9 +115,9 @@ def tail_log(stream_name, severity_filter=""):
 
                     if severity_filter and severity_filter!="ERROR" and severity_filter in log_line.upper():
                         print(f"[{ts}] 🔍 {log_line}", flush=True)
-                    if "ERROR" in log_line.upper():
+                    elif "ERROR" in log_line.upper():
                         print(f"[{ts}] ❗ {log_line}", flush=True)
-                    if "it.mitur." in log_line:
+                    elif "it.mitur." in log_line:
                         print(f"[{ts}] 🧩 {log_line}", flush=True)
                     else:
                         print(f"[{ts}] {log_line}", flush=True)
