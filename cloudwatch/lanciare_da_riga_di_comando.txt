@@ -8,3 +8,8 @@ podman run --rm -it --env-file .env cloudwatch-tail --since 1h --filter utility 
 
 # rimuovi immagine
 podman rmi cloudwatch-tail
+
+# rimuovi ancetor
+podman rm -f $(podman ps -a -q --filter ancestor=cloudwatch-tail)
+
+

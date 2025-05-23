@@ -21,6 +21,9 @@ parser.add_argument('--severity', default='', help="Filtra solo log che contengo
 
 args = parser.parse_args()
 
+print("📦 Argomenti ricevuti:", args)
+
+
 LOG_STREAM_FILTER = args.filter
 SINCE = args.since
 
@@ -111,7 +114,11 @@ def tail_log(stream_name, severity_filter=""):
                         log_line = msg
 
                     if severity_filter and severity_filter in log_line.upper():
+                        print(f"[{ts}] 🔍 {log_line}", flush=True)
+                    if "ERROR" in log_line.upper():
                         print(f"[{ts}] ❗ {log_line}", flush=True)
+                    if "it.mitur." in log_line:
+                        print(f"[{ts}] 🧩 {log_line}", flush=True)
                     else:
                         print(f"[{ts}] {log_line}", flush=True)
 
