@@ -113,7 +113,7 @@ def tail_log(stream_name, severity_filter=""):
                     except json.JSONDecodeError:
                         log_line = msg
 
-                    if severity_filter and severity_filter in log_line.upper():
+                    if severity_filter and severity_filter!="ERROR" and severity_filter in log_line.upper():
                         print(f"[{ts}] 🔍 {log_line}", flush=True)
                     if "ERROR" in log_line.upper():
                         print(f"[{ts}] ❗ {log_line}", flush=True)
