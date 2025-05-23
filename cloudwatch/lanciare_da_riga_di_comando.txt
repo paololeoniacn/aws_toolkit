@@ -1,0 +1,10 @@
+# crea immagine
+podman build -t cloudwatch-tail .
+
+# create .env
+
+# avvia container
+podman run --rm -it --env-file .env cloudwatch-tail --since 1h --filter utility 
+
+# rimuovi immagine
+podman rmi cloudwatch-tail
