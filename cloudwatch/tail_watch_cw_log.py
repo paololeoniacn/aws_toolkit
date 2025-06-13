@@ -1,3 +1,4 @@
+import json
 import os
 import time
 import boto3
@@ -15,7 +16,7 @@ load_dotenv()
 
 # Argomenti da CLI
 parser = argparse.ArgumentParser()
-parser.add_argument('--filter', default='utility', help="Filtro log stream name")
+parser.add_argument('--filter', default='', help="Filtro log stream name")
 parser.add_argument('--since', default='5m', help="Quanto indietro nei log (es: 30m, 1h, 2h)")
 parser.add_argument('--severity', default='', help="Filtra solo log che contengono questa stringa (es: ERROR, WARN, INFO)")
 
@@ -24,7 +25,8 @@ args = parser.parse_args()
 print("📦 Argomenti ricevuti:", args)
 
 
-LOG_STREAM_FILTER = args.filter
+# LOG_STREAM_FILTER = args.filter
+LOG_STREAM_FILTER = f"fluentbit-kube.var.log.containers.{args.filter}"
 SINCE = args.since
 
 # Parse durata tipo "30m", "1h"
@@ -69,7 +71,7 @@ def get_first_stream_with_events():
                 logGroupName=LOG_GROUP,
                 logStreamName=name,
                 startTime=start_time,
-                limit=1,
+                limit=2,
                 startFromHead=False
             )
             if response.get('events'):
@@ -78,59 +80,138 @@ def get_first_stream_with_events():
     print("⚠️ Nessun log stream trovato.")
     return None
 
-def tail_log(stream_name, severity_filter=""):
+def tail_log_with_filter(log_group, start_time, severity_filter=""):
     severity_filter = severity_filter.upper()
-    print(f"📡 Tailing stream: {stream_name}")
+    print(f"📡 Tailing logs from group: {log_group}, filter: '{LOG_STREAM_FILTER}', since: {SINCE}")
+
     next_token = None
+
     try:
         while True:
             kwargs = {
-                'logGroupName': LOG_GROUP,
-                'logStreamName': stream_name,
+                'logGroupName': log_group,
                 'startTime': start_time,
-                'limit': 100,
-                'startFromHead': False
+                'interleaved': True,
             }
+
+            if args.filter:
+                kwargs['logStreamNamePrefix'] = LOG_STREAM_FILTER
+
+            if severity_filter:
+                kwargs['filterPattern'] = f'"{severity_filter}"'
+
             if next_token:
                 kwargs['nextToken'] = next_token
 
-            response = client.get_log_events(**kwargs)
+            response = client.filter_log_events(**kwargs)
             events = response.get('events', [])
-            token = response.get('nextForwardToken')
+            new_token = response.get('nextToken')
 
-            if not events:
-                print("⏳ Nessun nuovo log...")
-            else:
+            if events:
                 for event in events:
                     ts = datetime.datetime.utcfromtimestamp(event['timestamp'] / 1000.0)
+                    log_stream = event.get('logStreamName', 'unknown')
+
                     msg = event['message'].strip()
-                    # print(f"[{ts}] {msg}", flush=True)
-                    import json
-                    msg = event['message'].strip()
+
+                    # Prova a parsare JSON per estrarre 'log'
                     try:
                         parsed = json.loads(msg)
-                        log_line = parsed.get('log', msg)
+                        log_line = str(parsed.get('log', msg))  # forza in stringa
                     except json.JSONDecodeError:
                         log_line = msg
 
-                    if severity_filter and severity_filter!="ERROR" and severity_filter in log_line.upper():
-                        print(f"[{ts}] 🔍 {log_line}", flush=True)
-                    elif "ERROR" in log_line.upper():
-                        print(f"[{ts}] ❗ {log_line}", flush=True)
-                    elif "it.mitur." in log_line:
-                        print(f"[{ts}] 🧩 {log_line}", flush=True)
+
+                    # Filtro manuale se filterPattern non trova tutto
+                    if severity_filter and severity_filter not in log_line.upper():
+                        continue
+
+                    label = "INIT"
+                    if "infocamere" in log_stream.lower():
+                        label = "📤 InfoCamere"
+                    elif "crm" in log_stream.lower():
+                        label = "📦 Crm"
+                    elif "cdp" in log_stream.lower():
+                        label = "❌ CDP"
+                    elif "utility" in log_stream.lower():
+                        label = "🔍 Utility"
+                    elif "kube-proxy" in log_stream.lower():
+                        label = "kube-proxy"
+                    elif "aws-load-balancer-controller" in log_stream.lower():
+                        label = "ELB"
                     else:
-                        print(f"[{ts}] {log_line}", flush=True)
+                        label = log_stream
 
+                    print(f"{label} {log_line}", flush=True)
 
-            if token == next_token:
-                time.sleep(2)
-            next_token = token
+                start_time = events[-1]['timestamp'] + 1  # per evitare duplicati
+            else:
+                print("⏳ Nessun nuovo log...")
+
+            
+            time.sleep(10)
+
+            next_token = new_token
 
     except KeyboardInterrupt:
         print("\n🛑 Interrotto dall'utente.")
     except Exception as e:
         print("❌ Errore:", e)
+
+
+# def tail_log(stream_name, severity_filter=""):
+#     severity_filter = severity_filter.upper()
+#     print(f"📡 Tailing stream: {stream_name}")
+#     next_token = None
+#     try:
+#         while True:
+#             kwargs = {
+#                 'logGroupName': LOG_GROUP,
+#                 'logStreamName': stream_name,
+#                 'startTime': start_time,
+#                 'limit': 100,
+#                 'startFromHead': False
+#             }
+#             if next_token:
+#                 kwargs['nextToken'] = next_token
+
+#             response = client.get_log_events(**kwargs)
+#             events = response.get('events', [])
+#             token = response.get('nextForwardToken')
+
+#             if not events:
+#                 print("⏳ Nessun nuovo log...")
+#             else:
+#                 for event in events:
+#                     ts = datetime.datetime.utcfromtimestamp(event['timestamp'] / 1000.0)
+#                     msg = event['message'].strip()
+#                     # print(f"[{ts}] {msg}", flush=True)
+#                     import json
+#                     msg = event['message'].strip()
+#                     try:
+#                         parsed = json.loads(msg)
+#                         log_line = parsed.get('log', msg)
+#                     except json.JSONDecodeError:
+#                         log_line = msg
+
+#                     if severity_filter and severity_filter!="ERROR" and severity_filter in log_line.upper():
+#                         print(f"[{ts}] 🔍 {log_line}", flush=True)
+#                     elif "ERROR" in log_line.upper():
+#                         print(f"[{ts}] ❗ {log_line}", flush=True)
+#                     elif "it.mitur." in log_line:
+#                         print(f"[{ts}] 🧩 {log_line}", flush=True)
+#                     else:
+#                         print(f"[{ts}] {log_line}", flush=True)
+
+
+#             if token == next_token:
+#                 time.sleep(2)
+#             next_token = token
+
+#     except KeyboardInterrupt:
+#         print("\n🛑 Interrotto dall'utente.")
+#     except Exception as e:
+#         print("❌ Errore:", e)
 
 def list_log_groups(region='eu-south-1'):
     """
@@ -156,10 +237,16 @@ def print_log_groups():
     print("📋 Log groups trovati:")
     for lg in log_groups:
         print(f" - {lg}")
-        
+
+def tail_log_with_filter_init():
+    tail_log_with_filter(LOG_GROUP, start_time, args.severity)
+
+# def tail_log_init():
+#     stream = get_first_stream_with_events()
+#         if stream:
+#             tail_log(stream, args.severity)
+
 if __name__ == "__main__":
-    stream = get_first_stream_with_events()
-    if stream:
-        tail_log(stream, args.severity)
-    else:
-        exit(1)
+    tail_log_with_filter_init()
+
+
