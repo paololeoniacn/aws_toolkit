@@ -11,6 +11,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 import sys
 sys.stdout.reconfigure(line_buffering=True)
 
+TIMEOUT_SECS=5
 # Carica variabili .env
 load_dotenv()
 
@@ -127,29 +128,37 @@ def tail_log_with_filter(log_group, start_time, severity_filter=""):
                         continue
 
                     label = "INIT"
-                    if "infocamere" in log_stream.lower():
-                        label = "📤 InfoCamere"
-                    elif "crm" in log_stream.lower():
-                        label = "📦 Crm"
-                    elif "cdp" in log_stream.lower():
-                        label = "❌ CDP"
-                    elif "utility" in log_stream.lower():
-                        label = "🔍 Utility"
-                    elif "kube-proxy" in log_stream.lower():
-                        label = "kube-proxy"
-                    elif "aws-load-balancer-controller" in log_stream.lower():
-                        label = "ELB"
+                    if args.filter:
+                        if "error" in log_stream.lower():
+                            label = "❌❌❌ ERROR"
+                        else:
+                            label = ""
                     else:
-                        label = log_stream
+                        if "error" in log_stream.lower():
+                            label = "❌❌❌ ERROR"
+                        elif "infocamere" in log_stream.lower():
+                            label = "📤 InfoCamere"
+                        elif "crm" in log_stream.lower():
+                            label = "📦 Crm"
+                        elif "cdp" in log_stream.lower():
+                            label = " CDP"
+                        elif "utility" in log_stream.lower():
+                            label = "🔍 Utility"
+                        elif "kube-proxy" in log_stream.lower():
+                            label = "kube-proxy"
+                        elif "aws-load-balancer-controller" in log_stream.lower():
+                            label = "ELB"
+                        else:
+                            label = log_stream
 
                     print(f"{label} {log_line}", flush=True)
 
                 start_time = events[-1]['timestamp'] + 1  # per evitare duplicati
             else:
-                print("⏳ Nessun nuovo log...")
+                print(f"⏳ Nessun nuovo log negli ultimi {TIMEOUT_SECS} secondi...")
 
             
-            time.sleep(10)
+            time.sleep(TIMEOUT_SECS)
 
             next_token = new_token
 
