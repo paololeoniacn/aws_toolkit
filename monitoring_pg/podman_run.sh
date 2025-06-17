@@ -101,9 +101,14 @@ info "Build completata."
 # 5. Run container
 # ---------------------------------------------------
 info "Avvio container '$IMAGE_NAME'..."
+LOG_DIR_HOST="$(pwd)/logs"
+mkdir -p "$LOG_DIR_HOST"
+
 if ! podman run --rm -it \
     --env-file "$TARGET_FILE" \
+    -v "$LOG_DIR_HOST":/app/logs:Z \
     "$IMAGE_NAME" "$@"; then
+
   error_exit "Errore nell'avvio del container.
 - Parametri: $*
 - File .env usato: '$TARGET_FILE'
