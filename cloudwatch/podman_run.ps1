@@ -4,8 +4,8 @@
 
 param(
     [string]$Since = "1h",
-    [string]$Filter = "utility",
-    [string]$Severity = "ERROR"
+    [string]$Filter = "",
+    [string]$Severity = ""
 )
 
 Write-Host "Costruzione immagine Docker 'cloudwatch-tail'..."
