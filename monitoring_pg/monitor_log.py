@@ -230,16 +230,8 @@ def analyze_logs(logs):
                 description=f"PROCESSO {proc_name} - Stato: {result_activity} ({activity_status})",
                 error_message="Descrizione: {result_descr}"
             )
-            print(f"  ↪ ❌ UL NON presente anche in stato BUONO")
-        
-        #
-        from send_mail_service import send_alert_email
-        send_alert_email(
-            identifier=identifier,
-            description=f"PROCESSO [{proc_name}] - STATO: {result_activity} ({activity_status})",
-            error_message=f"{result_descr}"
-        )
-        #
+            print(f"  ↪ ❌ UL NON presente anche in stato BUONO")        
+
         print("-" * 60)
 
 
