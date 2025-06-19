@@ -1,0 +1,70 @@
+# === Python ===
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.pdb
+*.egg-info/
+dist/
+build/
+
+# === Virtualenv ===
+.venv/
+env/
+venv/
+ENV/
+.Python
+pip-log.txt
+
+# === VSCode ===
+.vscode/
+
+# === macOS ===
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+.Spotlight-V100
+.Trashes
+._*
+.fseventsd
+.TemporaryItems
+
+# === Logs / Reports ===
+logs/
+*.log
+output.json
+report.json
+report.txt
+
+# === Environment ===
+.env
+.env.*
+*.secret
+*.key
+
+
+# === IPython / Jupyter ===
+.ipynb_checkpoints/
+
+# === MyPy / Pyright / Coverage ===
+.mypy_cache/
+.pyright/
+.coverage
+htmlcov/
+.cache/
+
+# === OS/Editor-specific ===
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.bak
+*~
+
+# === Test / Fixtures ===
+test/__pycache__/
+tests/__pycache__/
+
+.venv*
