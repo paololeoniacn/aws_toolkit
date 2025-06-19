@@ -2,11 +2,12 @@ import psycopg2
 import json
 import os
 from dotenv import load_dotenv
+import csv
 
 # Carica variabili da .env
 load_dotenv()
 
-import csv
+LOG_DIR = os.getenv("LOG_DIR", "./logs")
 
 def load_exclusion_list(filepath="exclusion.csv"):
     exclusion_dict = {}
@@ -129,8 +130,27 @@ def get_falso_positivi():
     print("-" * 60)
     print(f"{'✅ Report JSON salvato in':45} output.json\n")
 
-    with open("output.json", "w") as f:
-        json.dump(risultati, f, indent=2)
+    # Prepara report finale strutturato
+    report = {
+        "summary": {
+            "total_errors": count_total + count_skipped,
+            "excluded_identifiers": len(exclusion_dict),
+            "skipped": count_skipped,
+            "analyzed": count_total,
+            "false_positives": count_fp,
+            "real_errors": count_real_errors
+        },
+        "excluded": exclusion_dict,
+        "results": risultati
+    }
+
+    os.makedirs(LOG_DIR, exist_ok=True)
+
+    output_path = os.path.join(LOG_DIR, "output.json")
+    with open(output_path, "w") as f:
+        json.dump(report, f, indent=2)
+
+    print(f"{'✅ Report JSON salvato in':45} {output_path}\n")
 
 if __name__ == "__main__":
     get_falso_positivi()
