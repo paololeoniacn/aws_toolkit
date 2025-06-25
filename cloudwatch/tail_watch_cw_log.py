@@ -134,23 +134,35 @@ def tail_log_with_filter(log_group, start_time, severity_filter=""):
                         else:
                             label = ""
                     else:
-                        if "error" in log_stream.lower():
-                            label = "❌❌❌ ERROR"
-                        elif "infocamere" in log_stream.lower():
+                        if "infocamere" in log_stream.lower():
                             label = "📤 InfoCamere"
                         elif "crm" in log_stream.lower():
                             label = "📦 Crm"
                         elif "cdp" in log_stream.lower():
-                            label = " CDP"
+                            label = "👁️ CDP"
                         elif "utility" in log_stream.lower():
                             label = "🔍 Utility"
+                        elif "google" in log_stream.lower():
+                            label = "🌎 Google"
                         elif "kube-proxy" in log_stream.lower():
                             label = "kube-proxy"
                         elif "aws-load-balancer-controller" in log_stream.lower():
                             label = "ELB"
                         else:
-                            label = log_stream
+                            label = "___"+log_stream
 
+                    import re  # all'inizio del file, se non c'è già
+
+                    # Regex per matchare "error" come parola, ma non dentro "errorCode" ecc.
+                    error_pattern = re.compile(r'\berror\b', re.IGNORECASE)
+                    warn_pattern = re.compile(r'\bwarn\b', re.IGNORECASE)
+                    # Sovrascrive la label se c'è un errore
+                    # Se il log o lo stream contengono "error", sovrascrive la label
+                    if error_pattern.search(log_line):
+                        label = f"❌❌❌ ERROR - {label}"
+                    elif warn_pattern.search(log_line):
+                        label = f"⚠️⚠️⚠️ WARN - {label}"
+                        
                     print(f"{label} {log_line}", flush=True)
 
                 start_time = events[-1]['timestamp'] + 1  # per evitare duplicati
