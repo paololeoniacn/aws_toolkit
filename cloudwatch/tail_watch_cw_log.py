@@ -6,6 +6,7 @@ import argparse
 import datetime
 from dotenv import load_dotenv
 from botocore.exceptions import BotoCoreError, ClientError
+import re
 
 # Flush immediato
 import sys
@@ -129,7 +130,7 @@ def tail_log_with_filter(log_group, start_time, severity_filter=""):
 
                     label = "INIT"
                     if args.filter:
-                        if "error" in log_line.lower():
+                        if re.search(r'\] *ERROR\b', log_line, re.IGNORECASE):
                             label = "❌❌❌ ERROR"
                         else:
                             label = ""
@@ -151,11 +152,9 @@ def tail_log_with_filter(log_group, start_time, severity_filter=""):
                         else:
                             label = "___"+log_stream
 
-                    import re  # all'inizio del file, se non c'è già
-
                     # Regex per matchare "error" come parola, ma non dentro "errorCode" ecc.
-                    error_pattern = re.compile(r'\berror\b', re.IGNORECASE)
-                    warn_pattern = re.compile(r'\bwarn\b', re.IGNORECASE)
+                    error_pattern = re.compile(r'\] *ERROR\b', re.IGNORECASE)
+                    warn_pattern = re.compile(r'\] *WARN\b', re.IGNORECASE)
                     # Sovrascrive la label se c'è un errore
                     # Se il log o lo stream contengono "error", sovrascrive la label
                     if error_pattern.search(log_line):
