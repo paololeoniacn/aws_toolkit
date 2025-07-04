@@ -145,6 +145,8 @@ def tail_log_with_filter(log_group, start_time, severity_filter=""):
                             label = "🔍 Utility"
                         elif "google" in log_stream.lower():
                             label = "🌎 Google"
+                        elif "cammini" in log_stream.lower():
+                            label = "🦶 Cammini"
                         elif "kube-proxy" in log_stream.lower():
                             label = "kube-proxy"
                         elif "aws-load-balancer-controller" in log_stream.lower():
@@ -162,7 +164,13 @@ def tail_log_with_filter(log_group, start_time, severity_filter=""):
                     elif warn_pattern.search(log_line):
                         label = f"⚠️⚠️⚠️ WARN - {label}"
                         
-                    print(f"{label} {log_line}", flush=True)
+                    # Suddividi in righe solo per la stampa
+                    lines = log_line.splitlines()
+                    if lines:
+                        first_line = lines[0]
+                        print(f"{label} {first_line}", flush=True)
+                        for line in lines[1:]:
+                            print(f"│   {line}", flush=True) # solo indentazione, nessuna label ripetuta
 
                 start_time = events[-1]['timestamp'] + 1  # per evitare duplicati
             else:
