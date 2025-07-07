@@ -7,10 +7,18 @@ import datetime
 from dotenv import load_dotenv
 from botocore.exceptions import BotoCoreError, ClientError
 import re
+import pytz
 
 # Flush immediato
 import sys
 sys.stdout.reconfigure(line_buffering=True)
+
+# Regex per matchare "ERROR" come parola (non cattura "errorCode"), preceduto da ']' e spazi opzionali
+error_pattern = re.compile(r'\] *ERROR\b', re.IGNORECASE)
+# Regex per matchare "WARN" come parola
+warn_pattern  = re.compile(r'\] *WARN\b',  re.IGNORECASE)
+
+date_pattern = re.compile(r'^\d{4}-\d{2}-\d{2}')
 
 TIMEOUT_SECS=5
 # Carica variabili .env
@@ -45,7 +53,14 @@ def parse_duration(dur):
 # Calcolo start time
 duration = parse_duration(SINCE)
 # start_time = int((datetime.datetime.now() - duration).timestamp() * 1000) # ROME
-start_time = int((datetime.datetime.now(datetime.timezone.utc) - duration).timestamp() * 1000) # UTC
+# start_time = int((datetime.datetime.now(datetime.timezone.utc) - duration).timestamp() * 1000) # UTC
+rome_tz = pytz.timezone("Europe/Rome")
+local_now = datetime.datetime.now(rome_tz)
+start_time = int((local_now - duration).astimezone(datetime.timezone.utc).timestamp() * 1000)
+
+print(f"🕒 Ora locale: {local_now}")
+print(f"🕒 Start time log REQUEST: {local_now - duration}")
+print(f"🕒 Start time UTC: {(local_now - duration).astimezone(datetime.timezone.utc)}")
 
 
 print("🔐 AWS_ACCESS_KEY_ID:", os.getenv('AWS_ACCESS_KEY_ID'))
@@ -129,6 +144,7 @@ def tail_log_with_filter(log_group, start_time, severity_filter=""):
                         continue
 
                     label = "INIT"
+                    # Se singolo filtro stream non uso la logica delle label
                     if args.filter:
                         if re.search(r'\] *ERROR\b', log_line, re.IGNORECASE):
                             label = "❌❌❌ ERROR"
@@ -154,9 +170,7 @@ def tail_log_with_filter(log_group, start_time, severity_filter=""):
                         else:
                             label = "___"+log_stream
 
-                    # Regex per matchare "error" come parola, ma non dentro "errorCode" ecc.
-                    error_pattern = re.compile(r'\] *ERROR\b', re.IGNORECASE)
-                    warn_pattern = re.compile(r'\] *WARN\b', re.IGNORECASE)
+
                     # Sovrascrive la label se c'è un errore
                     # Se il log o lo stream contengono "error", sovrascrive la label
                     if error_pattern.search(log_line):
@@ -166,11 +180,21 @@ def tail_log_with_filter(log_group, start_time, severity_filter=""):
                         
                     # Suddividi in righe solo per la stampa
                     lines = log_line.splitlines()
+                    # if lines:
+                    #     first_line = lines[0]
+                    #     print(f"{label} {first_line}", flush=True)
+                    #     for line in lines[1:]:
+                    #         print(f"│   {line}", flush=True) # solo indentazione, nessuna label ripetuta
+                    
                     if lines:
-                        first_line = lines[0]
-                        print(f"{label} {first_line}", flush=True)
-                        for line in lines[1:]:
-                            print(f"│   {line}", flush=True) # solo indentazione, nessuna label ripetuta
+                        for line in lines:
+                            if date_pattern.match(line):
+                                # nuova entry: etichetta e linea intera
+                                print(f"{label} {line}", flush=True)
+                            else:
+                                # continuation: solo indentazione
+                                print(f"│   {line}", flush=True)
+
 
                 start_time = events[-1]['timestamp'] + 1  # per evitare duplicati
             else:
