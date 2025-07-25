@@ -20,7 +20,8 @@ if podman images --format "{{.Repository}}" | grep -q "^${IMAGE_NAME}$"; then
   info "Rimuovo immagine Podman '${IMAGE_NAME}'"
   podman rmi "${IMAGE_NAME}"
 else
-  warn "Immagine '${IMAGE_NAME}' non trovata (nulla da rimuovere)"
+  warn "Immagine '${IMAGE_NAME}' non trovata -> IMAGE PRUNE"
+  podman image prune 
 fi
 
 # ---------------------------------------------------

@@ -58,14 +58,17 @@ rome_tz = pytz.timezone("Europe/Rome")
 local_now = datetime.datetime.now(rome_tz)
 start_time = int((local_now - duration).astimezone(datetime.timezone.utc).timestamp() * 1000)
 
+print("-"*50)
 print(f"🕒 Ora locale: {local_now}")
 print(f"🕒 Start time log REQUEST: {local_now - duration}")
 print(f"🕒 Start time UTC: {(local_now - duration).astimezone(datetime.timezone.utc)}")
-
+print("🕓 Firma richiesta (UTC):", datetime.datetime.utcnow().isoformat() + "Z")
+print("-"*50)
 
 print("🔐 AWS_ACCESS_KEY_ID:", os.getenv('AWS_ACCESS_KEY_ID'))
 print("🌍 AWS_DEFAULT_REGION:", os.getenv('AWS_DEFAULT_REGION'))
 print(f"🎯 Filtro stream: '{LOG_STREAM_FILTER}', da {SINCE} fa")
+print("-"*50)
 
 client = boto3.client('logs')
 LOG_GROUP=os.getenv('LOG_GROUP')
@@ -119,7 +122,7 @@ def tail_log_with_filter(log_group, start_time, severity_filter=""):
 
             if next_token:
                 kwargs['nextToken'] = next_token
-
+                        
             response = client.filter_log_events(**kwargs)
             events = response.get('events', [])
             new_token = response.get('nextToken')
@@ -163,6 +166,8 @@ def tail_log_with_filter(log_group, start_time, severity_filter=""):
                             label = "🌎 Google"
                         elif "cammini" in log_stream.lower():
                             label = "🦶 Cammini"
+                        elif "ristoranti" in log_stream.lower():
+                            label = "🍕 Ristoranti"
                         elif "kube-proxy" in log_stream.lower():
                             label = "kube-proxy"
                         elif "aws-load-balancer-controller" in log_stream.lower():
@@ -209,61 +214,6 @@ def tail_log_with_filter(log_group, start_time, severity_filter=""):
         print("\n🛑 Interrotto dall'utente.")
     except Exception as e:
         print("❌ Errore:", e)
-
-
-# def tail_log(stream_name, severity_filter=""):
-#     severity_filter = severity_filter.upper()
-#     print(f"📡 Tailing stream: {stream_name}")
-#     next_token = None
-#     try:
-#         while True:
-#             kwargs = {
-#                 'logGroupName': LOG_GROUP,
-#                 'logStreamName': stream_name,
-#                 'startTime': start_time,
-#                 'limit': 100,
-#                 'startFromHead': False
-#             }
-#             if next_token:
-#                 kwargs['nextToken'] = next_token
-
-#             response = client.get_log_events(**kwargs)
-#             events = response.get('events', [])
-#             token = response.get('nextForwardToken')
-
-#             if not events:
-#                 print("⏳ Nessun nuovo log...")
-#             else:
-#                 for event in events:
-#                     ts = datetime.datetime.utcfromtimestamp(event['timestamp'] / 1000.0)
-#                     msg = event['message'].strip()
-#                     # print(f"[{ts}] {msg}", flush=True)
-#                     import json
-#                     msg = event['message'].strip()
-#                     try:
-#                         parsed = json.loads(msg)
-#                         log_line = parsed.get('log', msg)
-#                     except json.JSONDecodeError:
-#                         log_line = msg
-
-#                     if severity_filter and severity_filter!="ERROR" and severity_filter in log_line.upper():
-#                         print(f"[{ts}] 🔍 {log_line}", flush=True)
-#                     elif "ERROR" in log_line.upper():
-#                         print(f"[{ts}] ❗ {log_line}", flush=True)
-#                     elif "it.mitur." in log_line:
-#                         print(f"[{ts}] 🧩 {log_line}", flush=True)
-#                     else:
-#                         print(f"[{ts}] {log_line}", flush=True)
-
-
-#             if token == next_token:
-#                 time.sleep(2)
-#             next_token = token
-
-#     except KeyboardInterrupt:
-#         print("\n🛑 Interrotto dall'utente.")
-#     except Exception as e:
-#         print("❌ Errore:", e)
 
 def list_log_groups(region='eu-south-1'):
     """
