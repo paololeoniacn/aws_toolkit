@@ -20,7 +20,7 @@ warn_pattern  = re.compile(r'\] *WARN\b',  re.IGNORECASE)
 
 date_pattern = re.compile(r'^\d{4}-\d{2}-\d{2}')
 
-TIMEOUT_SECS=5
+TIMEOUT_SECS=10
 # Carica variabili .env
 load_dotenv()
 
@@ -187,7 +187,7 @@ def tail_log_with_filter(log_group, start_time, severity_filter=""):
                     # Sovrascrive la label se c'è un errore
                     # Se il log o lo stream contengono "error", sovrascrive la label
                     if error_pattern.search(log_line):
-                        label = f"❌❌❌ ERROR - {label}"
+                        label = f"❌❌❌ ERROR -  {label}"
                     elif warn_pattern.search(log_line):
                         label = f"⚠️⚠️⚠️ WARN - {label}"
                         
