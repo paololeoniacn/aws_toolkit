@@ -168,6 +168,14 @@ def tail_log_with_filter(log_group, start_time, severity_filter=""):
                             label = "🦶 Cammini"
                         elif "ristoranti" in log_stream.lower():
                             label = "🍕 Ristoranti"
+                        elif "datalake" in log_stream.lower():
+                            label = "🌊 DataLake"
+                        elif "aem" in log_stream.lower():
+                            label = "📊 AEM"
+                        elif "esperienze" in log_stream.lower():
+                            label = "🧩 Esperienze"
+                        elif "tools" in log_stream.lower():
+                            label = "⚙️ tools"
                         elif "kube-proxy" in log_stream.lower():
                             label = "kube-proxy"
                         elif "aws-load-balancer-controller" in log_stream.lower():
