@@ -222,6 +222,7 @@ def tail_log_with_filter(log_group, start_time, severity_filter=""):
         print("\n🛑 Interrotto dall'utente.")
     except Exception as e:
         print("❌ Errore:", e)
+        print("Wait for 5 minutes or try to execute -> podman machine stop && podman machine start")
 
 def list_log_groups(region='eu-south-1'):
     """

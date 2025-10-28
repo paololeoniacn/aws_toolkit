@@ -1,2 +1,40 @@
-Pirelli
+
 .DS_Store
+
+# ==============================================================
+# Sicurezza: NON versionare segreti o info sensibili
+# ==============================================================
+
+# Chiavi private SSH e derivate
+keys/
+*.pem
+*.ppk
+*.key
+
+# File contenenti chiavi pubbliche associate (non sempre sensibili,
+# ma evitiamo leak di mappature utente@host)
+*.pub
+
+# Fingerprint del server gestito
+known_hosts
+
+# File di configurazione SSH del progetto
+# Contiene username, host e percorsi chiave
+ssh_config
+
+# Script di connessione e setup locale
+# Possono includere path locali o note interne
+connect.sh
+setup_ssh_client.sh
+generate_key.sh
+
+# Log di sessione o debug SSH
+ssh.log
+*.log
+
+# Backup/editor swap temporanei
+*~
+*.swp
+.DS_Store
+
+.env
