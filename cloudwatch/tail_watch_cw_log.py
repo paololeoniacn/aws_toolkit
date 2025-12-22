@@ -29,6 +29,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--filter', default='', help="Filtro log stream name")
 parser.add_argument('--since', default='5m', help="Quanto indietro nei log (es: 30m, 1h, 2h)")
 parser.add_argument('--severity', default='', help="Filtra solo log che contengono questa stringa (es: ERROR, WARN, INFO)")
+parser.add_argument('--filter-pattern', default='', help="CloudWatch Logs filter pattern (es: ?ERROR ?Exception)")
 
 args = parser.parse_args()
 
@@ -117,7 +118,12 @@ def tail_log_with_filter(log_group, start_time, severity_filter=""):
             if args.filter:
                 kwargs['logStreamNamePrefix'] = LOG_STREAM_FILTER
 
-            if severity_filter:
+            # 1) filtro CloudWatch vero (priorità)
+            if args.filter_pattern:
+                kwargs['filterPattern'] = args.filter_pattern
+
+            # 2) fallback: severity semplice
+            elif severity_filter:
                 kwargs['filterPattern'] = f'"{severity_filter}"'
 
             if next_token:

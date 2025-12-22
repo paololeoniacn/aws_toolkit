@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Example: 
+# ./pèodman_run.sh -env prod -- --since 1h --filter utility
+
+
 # ---------------------------------------------------
 # Funzioni di supporto
 # ---------------------------------------------------
