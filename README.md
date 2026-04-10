@@ -200,6 +200,88 @@ Output log: `C:\Mitur_logs\<env>\<env>_<servizio>_<timestamp>(S<since>).log`
 
 ---
 
+## Utilizzo diretto (senza wrapper PowerShell)
+
+Se non vuoi configurare il profilo PowerShell o vuoi usare lo strumento da Linux/Mac/WSL, puoi richiamare i launcher direttamente o lanciare Podman a mano.
+
+---
+
+### Livello 1 — Podman puro
+
+Il modo più diretto. Costruisci l'immagine una volta, poi lancia il container passando il file `.env` con le credenziali:
+
+```bash
+cd aws_toolkit/cloudwatch
+
+# Build (una volta sola, o quando cambia il codice)
+podman build -t cloudwatch-tail .
+
+# Esecuzione
+podman run --rm -it --env-file /path/to/envs/test-psn.env cloudwatch-tail \
+    --since 1h \
+    --filter exportcms
+
+# Con filtri aggiuntivi
+podman run --rm -it --env-file /path/to/envs/prod-psn.env cloudwatch-tail \
+    --since 2h \
+    --filter aem \
+    --env prod \
+    --severity ERROR
+```
+
+Parametri del container (`tail_watch_cw_log.py`):
+
+| Parametro | Descrizione |
+|---|---|
+| `--filter` | Prefisso nome log stream EKS (nome servizio/pod) |
+| `--since` | Finestra temporale: `15m`, `1h`, `2h`, `1d` |
+| `--env` | Filtro ambiente EKS: `coll`, `coll-stage`, `prod` (solo linea PSN) |
+| `--severity` | Filtra per livello: `ERROR`, `WARN`, `INFO` |
+| `--filter-pattern` | CloudWatch filter pattern avanzato (es: `?ERROR ?Exception`) |
+
+---
+
+### Livello 2 — `podman_run.ps1` (Windows, senza profilo)
+
+Lancia direttamente lo script dalla cartella `cloudwatch/`, passando il path assoluto al file `.env`:
+
+```powershell
+cd C:\<path>\aws_toolkit\cloudwatch
+
+.\podman_run.ps1 -Since "1h" -Filter "exportcms" -EnvFile "C:\<path>\envs\test-psn.env"
+
+.\podman_run.ps1 -Since "30m" -Filter "cdp" -Env "coll-stage" -EnvFile "C:\<path>\envs\stage-psn.env"
+
+.\podman_run.ps1 -Since "2h" -Filter "aem" -Env "prod" -Severity "ERROR" -EnvFile "C:\<path>\envs\prod-psn.env"
+```
+
+> Nota: `-Env` qui accetta il nome EKS interno (`coll`, `coll-stage`, `prod`), non `TEST/STAGE/PROD`. Il mapping è gestito dagli script wrapper della repo PSN.
+
+---
+
+### Livello 3 — `podman_run.sh` (Linux/Mac/WSL)
+
+La versione bash si aspetta i file `.env` nella stessa cartella del container, con naming `.env.<suffisso>`. Copia i tuoi file lì prima di lanciare:
+
+```bash
+cd aws_toolkit/cloudwatch
+
+# Copia i file .env con il naming atteso dallo script
+cp /path/to/envs/test-psn.env .env.test-psn
+cp /path/to/envs/prod-psn.env .env.prod-psn
+
+# Esecuzione (-env specifica il suffisso, default: dev)
+./podman_run.sh -env test-psn -- --since 1h --filter exportcms
+./podman_run.sh -env prod-psn -- --since 2h --filter aem --env prod --severity ERROR
+
+# Senza suffisso: cerca .env.dev
+./podman_run.sh -- --since 15m --filter utility
+```
+
+> I file `.env.<suffisso>` vengono rimossi automaticamente dalla cartella al termine (il cleanup è gestito dal `trap` nello script).
+
+---
+
 ## Struttura repo
 
 ```
