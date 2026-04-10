@@ -20,25 +20,37 @@ warn_pattern  = re.compile(r'\] *WARN\b',  re.IGNORECASE)
 
 date_pattern = re.compile(r'^\d{4}-\d{2}-\d{2}')
 
-TIMEOUT_SECS=10
+TIMEOUT_SECS = 10
 # Carica variabili .env
 load_dotenv()
 
 # Argomenti da CLI
 parser = argparse.ArgumentParser()
-parser.add_argument('--filter', default='', help="Filtro log stream name")
+parser.add_argument('--filter', default='', help="Prefisso log stream EKS (nome servizio/pod)")
+parser.add_argument('--env', default='', help="Filtra per ambiente EKS (es: coll, coll-stage, prod)")
 parser.add_argument('--since', default='5m', help="Quanto indietro nei log (es: 30m, 1h, 2h)")
-parser.add_argument('--severity', default='', help="Filtra solo log che contengono questa stringa (es: ERROR, WARN, INFO)")
+parser.add_argument('--severity', default='', help="Filtra per livello: ERROR, WARN, INFO")
 parser.add_argument('--filter-pattern', default='', help="CloudWatch Logs filter pattern (es: ?ERROR ?Exception)")
+parser.add_argument('--log-type', default='', help="Tipo di log nel nome del gruppo (filtro legacy)")
 
 args = parser.parse_args()
 
 print("📦 Argomenti ricevuti:", args)
 
-
-# LOG_STREAM_FILTER = args.filter
-LOG_STREAM_FILTER = f"fluentbit-kube.var.log.containers.{args.filter}"
 SINCE = args.since
+
+# --- Modalità di selezione log group ---
+# LOG_GROUP (singolo): modalità diretta — usa il gruppo specificato senza discovery.
+# LOG_GROUP_PREFIX (prefisso): modalità discovery — trova tutti i gruppi che iniziano con il prefisso.
+# LOG_GROUP ha precedenza se entrambi sono presenti.
+LOG_GROUP_SINGLE = os.getenv('LOG_GROUP', '')
+LOG_GROUP_PREFIX = os.getenv('LOG_GROUP_PREFIX', '')
+
+# Prefisso dei log stream FluentBit in EKS.
+# Formato: fluentbit-kube.var.log.containers.<service>-<pod-hash>_<namespace>_...
+# Configurabile via .env per adattarsi a setup FluentBit non standard.
+EKS_STREAM_PREFIX = os.getenv('EKS_STREAM_PREFIX', 'fluentbit-kube.var.log.containers.')
+
 
 # Parse durata tipo "30m", "1h"
 def parse_duration(dur):
@@ -51,13 +63,12 @@ def parse_duration(dur):
     else:
         raise ValueError("Formato --since non valido. Usa es: 30m o 1h")
 
+
 # Calcolo start time
 duration = parse_duration(SINCE)
-# start_time = int((datetime.datetime.now() - duration).timestamp() * 1000) # ROME
-# start_time = int((datetime.datetime.now(datetime.timezone.utc) - duration).timestamp() * 1000) # UTC
 rome_tz = pytz.timezone("Europe/Rome")
 local_now = datetime.datetime.now(rome_tz)
-start_time = int((local_now - duration).astimezone(datetime.timezone.utc).timestamp() * 1000)
+start_time_global = int((local_now - duration).astimezone(datetime.timezone.utc).timestamp() * 1000)
 
 print("-"*50)
 print(f"🕒 Ora locale: {local_now}")
@@ -68,161 +79,202 @@ print("-"*50)
 
 print("🔐 AWS_ACCESS_KEY_ID:", os.getenv('AWS_ACCESS_KEY_ID'))
 print("🌍 AWS_DEFAULT_REGION:", os.getenv('AWS_DEFAULT_REGION'))
-print(f"🎯 Filtro stream: '{LOG_STREAM_FILTER}', da {SINCE} fa")
+if LOG_GROUP_SINGLE:
+    print(f"🎯 Log group singolo: '{LOG_GROUP_SINGLE}'")
+else:
+    print(f"🎯 Prefisso log group: '{LOG_GROUP_PREFIX}'")
+if args.log_type:
+    print(f"🗂️  Tipo log: '{args.log_type}'")
+if args.filter:
+    print(f"🔍 Filtro servizio: '{args.filter}' → stream prefix: '{EKS_STREAM_PREFIX}{args.filter}'")
+if args.env:
+    print(f"🌐 Filtro ambiente: '{args.env}'")
 print("-"*50)
 
 client = boto3.client('logs')
-LOG_GROUP=os.getenv('LOG_GROUP')
 
-print("🔐 LOG_GROUP:", LOG_GROUP)
 
-def get_first_stream_with_events():
-    print("🔍 Cerco log stream attivo...")
-    paginator = client.get_paginator('describe_log_streams')
-    for page in paginator.paginate(
-        logGroupName=LOG_GROUP,
-        orderBy='LastEventTime',
-        descending=True
-    ):
-        for stream in page['logStreams']:
-            name = stream['logStreamName']
-            if LOG_STREAM_FILTER not in name:
-                continue
-            response = client.get_log_events(
-                logGroupName=LOG_GROUP,
-                logStreamName=name,
-                startTime=start_time,
-                limit=2,
-                startFromHead=False
-            )
-            if response.get('events'):
-                print(f"✅ Trovato stream con log: {name}")
-                return name
-    print("⚠️ Nessun log stream trovato.")
-    return None
+def is_eks_group(name: str) -> bool:
+    """Restituisce True se il log group appartiene a un cluster EKS."""
+    return '/aws/eks/' in name
 
-def tail_log_with_filter(log_group, start_time, severity_filter=""):
-    severity_filter = severity_filter.upper()
-    print(f"📡 Tailing logs from group: {log_group}, filter: '{LOG_STREAM_FILTER}', since: {SINCE}")
 
-    next_token = None
+def _extract_eks_env(cluster_name: str) -> str:
+    """Estrae l'ambiente dal nome del cluster EKS.
+
+    Convenzione: tdh-<env>-<cluster-type>
+    Esempi:
+      tdh-coll-apilayer       -> 'coll'
+      tdh-coll-stage-apilayer -> 'coll-stage'
+      tdh-prod-apilayer       -> 'prod'
+    """
+    if cluster_name.startswith('tdh-'):
+        rest = cluster_name[4:]          # "coll-apilayer", "coll-stage-apilayer"
+        parts = rest.rsplit('-', 1)      # split sull'ultimo '-'
+        if len(parts) == 2:
+            return parts[0]              # "coll", "coll-stage", "prod"
+    return cluster_name
+
+
+def get_label_from_log_group(log_group_name):
+    """Estrae il label del servizio/ambiente dal nome del log group."""
+    name = log_group_name.lower()
+
+    # EKS PSN: /aws/eks/tdh-coll-apilayer, /aws/eks/tdh-coll-stage-apilayer, ecc.
+    if is_eks_group(log_group_name):
+        cluster = log_group_name.split('/')[-1]
+        env = _extract_eks_env(cluster)
+        if 'prod' in env:
+            return f"🚀 [{env.upper()}]"
+        elif 'stage' in env:
+            return f"🧪 [{env.upper()}]"
+        else:
+            return f"🔧 [{env.upper()}]"
+
+    # Etichette per nome servizio (fallback generico)
+    service_labels = {
+        "infocamere": "📤 InfoCamere",
+        "crm":        "📦 Crm",
+        "cdp":        "👁️ CDP",
+        "utility":    "🔍 Utility",
+        "google":     "🌎 Google",
+        "cammini":    "🦶 Cammini",
+        "ristoranti": "🍕 Ristoranti",
+        "datalake":   "🌊 DataLake",
+        "aem":        "📊 AEM",
+        "esperienze": "🧩 Esperienze",
+        "tools":      "⚙️ tools",
+    }
+    for key, label in service_labels.items():
+        if key in name:
+            return label
+
+    parts = log_group_name.split('/')
+    service = parts[-1] if parts else log_group_name
+    return f"___{service}"
+
+
+def discover_log_groups():
+    """Trova tutti i log group corrispondenti ai filtri specificati.
+
+    Modalità LOG_GROUP_SINGLE: restituisce direttamente il gruppo specificato,
+    senza discovery. Usata per ambienti con un singolo log group noto.
+
+    Modalità LOG_GROUP_PREFIX: scopre tutti i gruppi con il prefisso dato.
+    EKS PSN: filtra per ambiente tramite _extract_eks_env().
+    """
+    # --- Modalità singolo gruppo (LOG_GROUP) ---
+    if LOG_GROUP_SINGLE:
+        return [LOG_GROUP_SINGLE]
+
+    # --- Modalità discovery per prefisso (LOG_GROUP_PREFIX) ---
+    paginator = client.get_paginator('describe_log_groups')
+    groups = []
+    for page in paginator.paginate(logGroupNamePrefix=LOG_GROUP_PREFIX):
+        for group in page.get('logGroups', []):
+            name = group['logGroupName']
+
+            if is_eks_group(name):
+                # Filtra per ambiente EKS con match preciso sul nome cluster
+                if args.env:
+                    cluster = name.split('/')[-1]
+                    env_in_cluster = _extract_eks_env(cluster)
+                    if env_in_cluster != args.env.lower():
+                        continue
+                # Filtro servizio avviene sui log stream in tail_all_groups
+            else:
+                if args.log_type and args.log_type not in name:
+                    continue
+                if args.filter and args.filter.lower() not in name.lower():
+                    continue
+                if args.env and args.env.lower() not in name.lower():
+                    continue
+
+            groups.append(name)
+    return groups
+
+
+def tail_all_groups(log_groups, start_time):
+    """Tail multipli log group in polling round-robin."""
+    last_times = {lg: start_time for lg in log_groups}
+
+    print(f"📡 Tailing {len(log_groups)} log group(s):")
+    for lg in log_groups:
+        print(f"  - {lg}")
+    print("-" * 50)
 
     try:
         while True:
-            kwargs = {
-                'logGroupName': log_group,
-                'startTime': start_time,
-                'interleaved': True,
-            }
+            had_events = False
 
-            if args.filter:
-                kwargs['logStreamNamePrefix'] = LOG_STREAM_FILTER
+            for log_group in log_groups:
+                kwargs = {
+                    'logGroupName': log_group,
+                    'startTime': last_times[log_group],
+                    'interleaved': True,
+                }
 
-            # 1) filtro CloudWatch vero (priorità)
-            if args.filter_pattern:
-                kwargs['filterPattern'] = args.filter_pattern
+                # --- Filtro log stream (EKS) ---
+                # FluentBit nomina gli stream:
+                #   fluentbit-kube.var.log.containers.<service>-<pod-hash>_...
+                # logStreamNamePrefix filtra server-side: preciso, efficiente,
+                # nessun falso positivo da contenuto di altri servizi.
+                if is_eks_group(log_group) and args.filter:
+                    kwargs['logStreamNamePrefix'] = f"{EKS_STREAM_PREFIX}{args.filter}"
 
-            # 2) fallback: severity semplice
-            elif severity_filter:
-                kwargs['filterPattern'] = f'"{severity_filter}"'
+                # --- Filtro contenuto (filterPattern CloudWatch) ---
+                # filter_pattern esplicito ha priorità massima.
+                # severity da sola viene promossa a filterPattern.
+                if args.filter_pattern:
+                    kwargs['filterPattern'] = args.filter_pattern
+                elif args.severity:
+                    kwargs['filterPattern'] = f'"{args.severity.upper()}"'
 
-            if next_token:
-                kwargs['nextToken'] = next_token
-                        
-            response = client.filter_log_events(**kwargs)
-            events = response.get('events', [])
-            new_token = response.get('nextToken')
+                try:
+                    response = client.filter_log_events(**kwargs)
+                    events = response.get('events', [])
 
-            if events:
-                for event in events:
-                    ts = datetime.datetime.utcfromtimestamp(event['timestamp'] / 1000.0)
-                    log_stream = event.get('logStreamName', 'unknown')
+                    if events:
+                        had_events = True
+                        base_label = get_label_from_log_group(log_group)
 
-                    msg = event['message'].strip()
+                        for event in events:
+                            msg = event['message'].strip()
 
-                    # Prova a parsare JSON per estrarre 'log'
-                    try:
-                        parsed = json.loads(msg)
-                        log_line = str(parsed.get('log', msg))  # forza in stringa
-                    except json.JSONDecodeError:
-                        log_line = msg
+                            # Prova a parsare JSON per estrarre 'log'
+                            try:
+                                parsed = json.loads(msg)
+                                log_line = str(parsed.get('log', msg))
+                            except json.JSONDecodeError:
+                                log_line = msg
 
+                            # Filtro manuale se filterPattern non trova tutto
+                            if args.severity and args.severity.upper() not in log_line.upper():
+                                continue
 
-                    # Filtro manuale se filterPattern non trova tutto
-                    if severity_filter and severity_filter not in log_line.upper():
-                        continue
+                            label = base_label
+                            if error_pattern.search(log_line):
+                                label = f"❌❌❌ ERROR - {base_label}"
+                            elif warn_pattern.search(log_line):
+                                label = f"⚠️⚠️⚠️ WARN - {base_label}"
 
-                    label = "INIT"
-                    # Se singolo filtro stream non uso la logica delle label
-                    if args.filter:
-                        if re.search(r'\] *ERROR\b', log_line, re.IGNORECASE):
-                            label = "❌❌❌ ERROR"
-                        else:
-                            label = ""
-                    else:
-                        if "infocamere" in log_stream.lower():
-                            label = "📤 InfoCamere"
-                        elif "crm" in log_stream.lower():
-                            label = "📦 Crm"
-                        elif "cdp" in log_stream.lower():
-                            label = "👁️ CDP"
-                        elif "utility" in log_stream.lower():
-                            label = "🔍 Utility"
-                        elif "google" in log_stream.lower():
-                            label = "🌎 Google"
-                        elif "cammini" in log_stream.lower():
-                            label = "🦶 Cammini"
-                        elif "ristoranti" in log_stream.lower():
-                            label = "🍕 Ristoranti"
-                        elif "datalake" in log_stream.lower():
-                            label = "🌊 DataLake"
-                        elif "aem" in log_stream.lower():
-                            label = "📊 AEM"
-                        elif "esperienze" in log_stream.lower():
-                            label = "🧩 Esperienze"
-                        elif "tools" in log_stream.lower():
-                            label = "⚙️ tools"
-                        elif "kube-proxy" in log_stream.lower():
-                            label = "kube-proxy"
-                        elif "aws-load-balancer-controller" in log_stream.lower():
-                            label = "ELB"
-                        else:
-                            label = "___"+log_stream
+                            lines = log_line.splitlines()
+                            if lines:
+                                for line in lines:
+                                    if date_pattern.match(line):
+                                        print(f"{label} {line}", flush=True)
+                                    else:
+                                        print(f"│   {line}", flush=True)
 
+                        last_times[log_group] = events[-1]['timestamp'] + 1
 
-                    # Sovrascrive la label se c'è un errore
-                    # Se il log o lo stream contengono "error", sovrascrive la label
-                    if error_pattern.search(log_line):
-                        label = f"❌❌❌ ERROR -  {label}"
-                    elif warn_pattern.search(log_line):
-                        label = f"⚠️⚠️⚠️ WARN - {label}"
-                        
-                    # Suddividi in righe solo per la stampa
-                    lines = log_line.splitlines()
-                    # if lines:
-                    #     first_line = lines[0]
-                    #     print(f"{label} {first_line}", flush=True)
-                    #     for line in lines[1:]:
-                    #         print(f"│   {line}", flush=True) # solo indentazione, nessuna label ripetuta
-                    
-                    if lines:
-                        for line in lines:
-                            if date_pattern.match(line):
-                                # nuova entry: etichetta e linea intera
-                                print(f"{label} {line}", flush=True)
-                            else:
-                                # continuation: solo indentazione
-                                print(f"│   {line}", flush=True)
+                except ClientError as e:
+                    print(f"⚠️ Errore su {log_group}: {e}")
 
-
-                start_time = events[-1]['timestamp'] + 1  # per evitare duplicati
-            else:
+            if not had_events:
                 print(f"⏳ Nessun nuovo log negli ultimi {TIMEOUT_SECS} secondi...")
 
-            
             time.sleep(TIMEOUT_SECS)
-
-            next_token = new_token
 
     except KeyboardInterrupt:
         print("\n🛑 Interrotto dall'utente.")
@@ -230,40 +282,30 @@ def tail_log_with_filter(log_group, start_time, severity_filter=""):
         print("❌ Errore:", e)
         print("Wait for 5 minutes or try to execute -> podman machine stop && podman machine start")
 
-def list_log_groups(region='eu-south-1'):
-    """
-    Restituisce una lista dei nomi dei log group nella regione specificata.
-    """
+
+def list_log_groups():
+    """Restituisce i log group disponibili (per diagnostica)."""
     try:
-        client = boto3.client('logs', region_name=region)
         log_groups = []
         paginator = client.get_paginator('describe_log_groups')
-
-        for page in paginator.paginate():
+        kwargs = {}
+        if LOG_GROUP_PREFIX:
+            kwargs['logGroupNamePrefix'] = LOG_GROUP_PREFIX
+        for page in paginator.paginate(**kwargs):
             for group in page.get('logGroups', []):
                 log_groups.append(group['logGroupName'])
-
         return log_groups
-
     except (BotoCoreError, ClientError) as e:
         print(f"❌ Errore AWS: {e}")
         return []
 
-def print_log_groups():
-    log_groups = list_log_groups()
-    print("📋 Log groups trovati:")
-    for lg in log_groups:
-        print(f" - {lg}")
-
-def tail_log_with_filter_init():
-    tail_log_with_filter(LOG_GROUP, start_time, args.severity)
-
-# def tail_log_init():
-#     stream = get_first_stream_with_events()
-#         if stream:
-#             tail_log(stream, args.severity)
 
 if __name__ == "__main__":
-    tail_log_with_filter_init()
-
-
+    log_groups = discover_log_groups()
+    if not log_groups:
+        print("⚠️ Nessun log group trovato con i filtri specificati.")
+        print("💡 Log group disponibili:")
+        for lg in list_log_groups():
+            print(f"  - {lg}")
+    else:
+        tail_all_groups(log_groups, start_time_global)

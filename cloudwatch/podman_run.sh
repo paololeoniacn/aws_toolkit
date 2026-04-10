@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Example: 
-# ./pèodman_run.sh -env prod -- --since 1h --filter utility
+# Example:
+# ./podman_run.sh -env prod -- --since 1h --filter utility
 
 
 # ---------------------------------------------------
@@ -39,7 +39,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     -h|--help)
       echo "Uso: $0 [-env <ambiente>] -- [argomenti da passare al container]"
-      echo "Esempio: $0 -env prod -- --since 1h --filter utility"
+      echo "Esempio: $0 -env prod -- --since 1h --filter ristoranti"
       exit 0
       ;;
     --)
@@ -79,7 +79,7 @@ fi
 ENV_FILE=".env"
 if [ -n "$ENV_SUFFIX" ]; then
   ENV_FILE=".env.${ENV_SUFFIX}"
-else 
+else
   ENV_FILE=".env.dev"
 fi
 
@@ -115,10 +115,10 @@ info "Avvio del container '$IMAGE_NAME'..."
 if ! podman run --rm -it \
     --env-file "$TARGET_FILE" \
     "$IMAGE_NAME" "$@"; then
-  error_exit "avvio del container fallito. 
-- Verifica i parametri passati: $* 
-- Controlla il contenuto di '$TARGET_FILE' 
-- Assicurati che l’immagine esista con 'podman images'"
+  error_exit "avvio del container fallito.
+- Verifica i parametri passati: $*
+- Controlla il contenuto di '$TARGET_FILE'
+- Assicurati che l'immagine esista con 'podman images'"
 fi
 
 info "Container terminato correttamente."

@@ -1,0 +1,5 @@
+# Ignora i file .env reali (contengono credenziali)
+*.env
+
+# Versiona solo i template
+!*.env.example
