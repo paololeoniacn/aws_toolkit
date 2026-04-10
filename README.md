@@ -2,6 +2,16 @@
 
 Raccolta di strumenti AWS containerizzati via Podman. Ogni modulo è indipendente e si avvia con un singolo comando.
 
+## TOC
+
+- [Moduli](#moduli)
+- [cloudwatch -- Log viewer EKS](#cloudwatch--log-viewer-eks)
+- [Setup (una tantum)](#setup-una-tantum)
+- [Utilizzo](#utilizzo)
+- [Utilizzo diretto (senza wrapper PowerShell)](#utilizzo-diretto-senza-wrapper-powershell)
+- [Struttura repo](#struttura-repo)
+- [Troubleshooting](#troubleshooting)
+
 ---
 
 ## Moduli
@@ -244,6 +254,9 @@ Parametri del container (`tail_watch_cw_log.py`):
 ### Livello 2 — `podman_run.ps1` (Windows, senza profilo)
 
 Lancia direttamente lo script dalla cartella `cloudwatch/`, passando il path assoluto al file `.env`:
+
+> Se Podman non e' gia' attivo, `podman_run.ps1` prova ad avviare automaticamente
+> la machine di default prima di eseguire build e run del container.
 
 ```powershell
 cd C:\<path>\aws_toolkit\cloudwatch

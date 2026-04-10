@@ -25,6 +25,63 @@ if (-Not (Test-Path $EnvFile)) {
     exit 1
 }
 
+function Get-PodmanReadiness {
+    $output = & podman info 2>&1
+    $exitCode = $LASTEXITCODE
+
+    [pscustomobject]@{
+        IsReady   = ($exitCode -eq 0)
+        ErrorText = if ($exitCode -eq 0) { "" } else { ($output | Out-String).Trim() }
+    }
+}
+
+function Wait-PodmanReady {
+    param(
+        [int]$MaxAttempts = 10,
+        [int]$DelaySeconds = 2
+    )
+
+    $status = $null
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        $status = Get-PodmanReadiness
+        if ($status.IsReady) {
+            return $status
+        }
+
+        if ($attempt -lt $MaxAttempts) {
+            Start-Sleep -Seconds $DelaySeconds
+        }
+    }
+
+    return $status
+}
+
+function Ensure-PodmanReady {
+    if (-not (Get-Command podman -ErrorAction SilentlyContinue)) {
+        Write-Host "Podman non trovato nel PATH. Installa Podman o verifica la configurazione della shell." -ForegroundColor Red
+        exit 1
+    }
+
+    $status = Get-PodmanReadiness
+    if ($status.IsReady) {
+        return
+    }
+
+    Write-Host "Podman non risulta attivo. Avvio della machine di default..." -ForegroundColor Yellow
+    & podman machine start
+
+    $status = Wait-PodmanReady
+    if (-not $status.IsReady) {
+        Write-Host "Podman non e' partito correttamente. Verifica 'podman machine list' e lo stato della machine di default." -ForegroundColor Red
+        if ($status.ErrorText) {
+            Write-Host $status.ErrorText -ForegroundColor DarkRed
+        }
+        exit 1
+    }
+}
+
+Ensure-PodmanReady
+
 Write-Host "Costruzione immagine Docker 'cloudwatch-tail'..."
 podman build -t cloudwatch-tail . | Write-Output
 
