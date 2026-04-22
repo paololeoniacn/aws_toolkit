@@ -7,12 +7,13 @@
 #   Il file env viene passato automaticamente dallo script PowerShell chiamante.
 
 param(
-    [string]$Since    = "1h",
-    [string]$Filter   = "",
-    [string]$Env      = "",
-    [string]$Severity = "",
-    [string]$LogType  = "",
-    [string]$EnvFile  = ""
+    [string]$Since         = "1h",
+    [string]$Filter        = "",
+    [string]$Env           = "",
+    [string]$Severity      = "",
+    [string]$LogType       = "",
+    [string]$FilterPattern = "",
+    [string]$EnvFile       = ""
 )
 
 # Risolvi il path del file .env
@@ -88,9 +89,10 @@ podman build -t cloudwatch-tail . | Write-Output
 Write-Host "Avvio del container 'cloudwatch-tail' con:"
 Write-Host "     --since   $Since"
 Write-Host "     --filter  $Filter"
-if ($Env)      { Write-Host "     --env      $Env" }
-if ($Severity) { Write-Host "     --severity $Severity" }
-if ($LogType)  { Write-Host "     --log-type $LogType" }
+if ($Env)           { Write-Host "     --env            $Env" }
+if ($Severity)      { Write-Host "     --severity       $Severity" }
+if ($LogType)       { Write-Host "     --log-type       $LogType" }
+if ($FilterPattern) { Write-Host "     --filter-pattern $FilterPattern" }
 Write-Host "     --env-file $EnvFile"
 
 $containerName = "cloudwatch-tail-$(Get-Random)"
@@ -100,7 +102,8 @@ podman run --rm -it --name $containerName --env-file $EnvFile cloudwatch-tail `
     --filter $Filter `
     --env $Env `
     --severity $Severity `
-    --log-type $LogType
+    --log-type $LogType `
+    --filter-pattern $FilterPattern
 
 # --rm rimuove automaticamente questo container all'uscita.
 # L'immagine viene rimossa solo se non ci sono altre istanze ancora attive.
