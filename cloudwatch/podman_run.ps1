@@ -93,21 +93,24 @@ if ($Severity) { Write-Host "     --severity $Severity" }
 if ($LogType)  { Write-Host "     --log-type $LogType" }
 Write-Host "     --env-file $EnvFile"
 
-podman run --rm -it --env-file $EnvFile cloudwatch-tail `
+$containerName = "cloudwatch-tail-$(Get-Random)"
+
+podman run --rm -it --name $containerName --env-file $EnvFile cloudwatch-tail `
     --since $Since `
     --filter $Filter `
     --env $Env `
     --severity $Severity `
     --log-type $LogType
 
-Write-Host "Pulizia: rimozione container basati sull'immagine 'cloudwatch-tail'..."
-$containers = podman ps -a -q --filter ancestor=cloudwatch-tail
-if ($containers) {
-    podman rm -f $containers | Write-Output
+# --rm rimuove automaticamente questo container all'uscita.
+# L'immagine viene rimossa solo se non ci sono altre istanze ancora attive.
+Write-Host "Pulizia post-run..."
+$running = podman ps -q --filter ancestor=cloudwatch-tail
+if (-not $running) {
+    Write-Host "Rimozione immagine 'cloudwatch-tail'..."
+    podman rmi cloudwatch-tail 2>&1 | Out-Null
+    Write-Host "Operazioni completate."
 } else {
-    Write-Host "Nessun container da rimuovere."
+    Write-Host "Altre istanze attive, immagine mantenuta."
+    Write-Host "Operazioni completate."
 }
-
-Write-Host "Rimozione immagine 'cloudwatch-tail'..."
-podman rmi cloudwatch-tail | Write-Output
-Write-Host "Operazioni completate."

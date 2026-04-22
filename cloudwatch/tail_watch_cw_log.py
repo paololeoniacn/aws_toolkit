@@ -234,6 +234,15 @@ def tail_all_groups(log_groups, start_time):
                     response = client.filter_log_events(**kwargs)
                     events = response.get('events', [])
 
+                    # Segui nextToken finché ci sono pagine vuote (es. gap tra deploy)
+                    _next = response.get('nextToken')
+                    while not events and _next:
+                        skip_kwargs = dict(kwargs)
+                        skip_kwargs['nextToken'] = _next
+                        response = client.filter_log_events(**skip_kwargs)
+                        events = response.get('events', [])
+                        _next = response.get('nextToken')
+
                     if events:
                         had_events = True
                         base_label = get_label_from_log_group(log_group)

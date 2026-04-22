@@ -25,6 +25,8 @@ AWS_DEFAULT_REGION=eu-west-1
 ```bash
     ./podman_run.sh
 ```
+
+> Ogni istanza avvia un container con nome univoco (`cloudwatch-tail-<random>`) così più sessioni parallele non si interferiscono al Ctrl+C.
 4. Uso
 ```bash
 python tail_cloudwatch.py --filter api-server --since 1h

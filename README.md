@@ -320,4 +320,6 @@ I file `.env` reali (credenziali) vanno tenuti **fuori dalla repo**. La convenzi
 | `File .env non trovato` | `envs/` non è sorella di `aws_toolkit/` oppure `CW_ENVS_ROOT` non impostato | Crea `envs/` affianco o imposta `CW_ENVS_ROOT` |
 | `UnrecognizedClientException` | Credenziali scadute | `Run-Log-Psn`: prompt automatico — `Run-Log`: aggiorna `.env` manualmente |
 | `⏳ Nessun nuovo log` in loop | `-Filter` non matcha nessuno stream | Prova con `-Filter ""` per vedere tutti i log |
+| `⏳ Nessun nuovo log` con `-Since` lungo (es. 6h+) su servizi con gap tra deploy | CloudWatch restituisce pagine vuote con `nextToken` quando il range cade in un periodo senza log. Il client non seguiva il token e si bloccava. Fix in `tail_watch_cw_log.py`. | `git pull` |
+| Ctrl+C su una sessione termina anche le altre istanze attive | Il cleanup di `podman_run.ps1` cercava tutti i container `ancestor=cloudwatch-tail`, uccidendo le istanze concorrenti. Fix in `podman_run.ps1`. | `git pull` |
 | `podman_run.ps1 non trovato` | Repo incompleta o path errato | Verifica che `cloudwatch/podman_run.ps1` esista nel clone |
