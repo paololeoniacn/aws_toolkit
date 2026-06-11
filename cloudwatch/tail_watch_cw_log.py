@@ -224,11 +224,6 @@ def tail_all_groups(log_groups, start_time, end_time_ms=None):
 
     try:
         while True:
-            if end_time_ms:
-                now_ms = int(datetime.datetime.now(datetime.timezone.utc).timestamp() * 1000)
-                if now_ms >= end_time_ms:
-                    print("\n✅ Fine finestra temporale raggiunta. Estrazione completata.")
-                    break
             had_events = False
 
             for log_group in log_groups:
@@ -245,6 +240,9 @@ def tail_all_groups(log_groups, start_time, end_time_ms=None):
                 # nessun falso positivo da contenuto di altri servizi.
                 if is_eks_group(log_group) and args.filter:
                     kwargs['logStreamNamePrefix'] = f"{EKS_STREAM_PREFIX}{args.filter}"
+
+                if end_time_ms:
+                    kwargs['endTime'] = end_time_ms
 
                 # --- Filtro contenuto (filterPattern CloudWatch) ---
                 # filter_pattern esplicito ha priorità massima.
@@ -305,6 +303,9 @@ def tail_all_groups(log_groups, start_time, end_time_ms=None):
                     print(f"⚠️ Errore su {log_group}: {e}")
 
             if not had_events:
+                if end_time_ms:
+                    print("\n✅ Fine finestra temporale raggiunta. Estrazione completata.")
+                    break
                 print(f"⏳ Nessun nuovo log negli ultimi {TIMEOUT_SECS} secondi...")
 
             time.sleep(TIMEOUT_SECS)
