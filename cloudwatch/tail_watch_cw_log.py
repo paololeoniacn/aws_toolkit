@@ -32,6 +32,8 @@ parser.add_argument('--since', default='5m', help="Quanto indietro nei log (es: 
 parser.add_argument('--severity', default='', help="Filtra per livello: ERROR, WARN, INFO")
 parser.add_argument('--filter-pattern', default='', help="CloudWatch Logs filter pattern (es: ?ERROR ?Exception)")
 parser.add_argument('--log-type', default='', help="Tipo di log nel nome del gruppo (filtro legacy)")
+parser.add_argument('--start', default='', help="Data inizio assoluta (es: 2026-03-30 o 2026-03-30T00:00:00, ora di Roma). Se presente, --since viene ignorato.")
+parser.add_argument('--end',   default='', help="Data fine assoluta (es: 2026-03-31 o 2026-03-30T23:59:59, ora di Roma). Se presente, l'estrazione si ferma automaticamente.")
 
 args = parser.parse_args()
 
@@ -64,16 +66,33 @@ def parse_duration(dur):
         raise ValueError("Formato --since non valido. Usa es: 30m o 1h")
 
 
-# Calcolo start time
-duration = parse_duration(SINCE)
-rome_tz = pytz.timezone("Europe/Rome")
+# Calcolo start/end time
+rome_tz  = pytz.timezone("Europe/Rome")
 local_now = datetime.datetime.now(rome_tz)
-start_time_global = int((local_now - duration).astimezone(datetime.timezone.utc).timestamp() * 1000)
+
+if args.start:
+    _fmt = "%Y-%m-%dT%H:%M:%S" if 'T' in args.start else "%Y-%m-%d"
+    start_aware = rome_tz.localize(datetime.datetime.strptime(args.start, _fmt))
+else:
+    duration    = parse_duration(SINCE)
+    start_aware = local_now - duration
+
+start_time_global = int(start_aware.astimezone(datetime.timezone.utc).timestamp() * 1000)
+
+end_time_ms  = None
+end_aware    = None
+if args.end:
+    _fmt      = "%Y-%m-%dT%H:%M:%S" if 'T' in args.end else "%Y-%m-%d"
+    end_aware = rome_tz.localize(datetime.datetime.strptime(args.end, _fmt))
+    end_time_ms = int(end_aware.astimezone(datetime.timezone.utc).timestamp() * 1000)
 
 print("-"*50)
 print(f"🕒 Ora locale: {local_now}")
-print(f"🕒 Start time log REQUEST: {local_now - duration}")
-print(f"🕒 Start time UTC: {(local_now - duration).astimezone(datetime.timezone.utc)}")
+print(f"🕒 Start time log REQUEST: {start_aware}")
+print(f"🕒 Start time UTC: {start_aware.astimezone(datetime.timezone.utc)}")
+if end_aware:
+    print(f"🕒 End time log REQUEST: {end_aware}")
+    print(f"🕒 End time UTC: {end_aware.astimezone(datetime.timezone.utc)}")
 print("🕓 Firma richiesta (UTC):", datetime.datetime.utcnow().isoformat() + "Z")
 print("-"*50)
 
@@ -194,7 +213,7 @@ def discover_log_groups():
     return groups
 
 
-def tail_all_groups(log_groups, start_time):
+def tail_all_groups(log_groups, start_time, end_time_ms=None):
     """Tail multipli log group in polling round-robin."""
     last_times = {lg: start_time for lg in log_groups}
 
@@ -205,6 +224,11 @@ def tail_all_groups(log_groups, start_time):
 
     try:
         while True:
+            if end_time_ms:
+                now_ms = int(datetime.datetime.now(datetime.timezone.utc).timestamp() * 1000)
+                if now_ms >= end_time_ms:
+                    print("\n✅ Fine finestra temporale raggiunta. Estrazione completata.")
+                    break
             had_events = False
 
             for log_group in log_groups:
@@ -317,4 +341,4 @@ if __name__ == "__main__":
         for lg in list_log_groups():
             print(f"  - {lg}")
     else:
-        tail_all_groups(log_groups, start_time_global)
+        tail_all_groups(log_groups, start_time_global, end_time_ms)

@@ -13,7 +13,9 @@ param(
     [string]$Severity      = "",
     [string]$LogType       = "",
     [string]$FilterPattern = "",
-    [string]$EnvFile       = ""
+    [string]$EnvFile       = "",
+    [string]$StartDate     = "",
+    [string]$EndDate       = ""
 )
 
 # Risolvi il path del file .env
@@ -97,13 +99,18 @@ Write-Host "     --env-file $EnvFile"
 
 $containerName = "cloudwatch-tail-$(Get-Random)"
 
-podman run --rm -it --name $containerName --env-file $EnvFile cloudwatch-tail `
-    --since $Since `
-    --filter $Filter `
-    --env $Env `
-    --severity $Severity `
-    --log-type $LogType `
-    --filter-pattern $FilterPattern
+$containerArgs = @(
+    '--since',          $Since,
+    '--filter',         $Filter,
+    '--env',            $Env,
+    '--severity',       $Severity,
+    '--log-type',       $LogType,
+    '--filter-pattern', $FilterPattern
+)
+if ($StartDate) { $containerArgs += '--start', $StartDate }
+if ($EndDate)   { $containerArgs += '--end',   $EndDate }
+
+podman run --rm -it --name $containerName --env-file $EnvFile cloudwatch-tail @containerArgs
 
 # --rm rimuove automaticamente questo container all'uscita.
 # L'immagine viene rimossa solo se non ci sono altre istanze ancora attive.
