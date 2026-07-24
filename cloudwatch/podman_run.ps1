@@ -28,35 +28,37 @@ if (-Not (Test-Path $EnvFile)) {
     exit 1
 }
 
-function Get-PodmanReadiness {
-    $output = & podman info 2>&1
-    $exitCode = $LASTEXITCODE
+# Esegue un comando podman con timeout: senza questo, un hang della VM (tipico dopo
+# lo sleep del PC per conflitti di rete WSL2/Hyper-V) blocca lo script a tempo indefinito.
+function Invoke-PodmanWithTimeout {
+    param(
+        [Parameter(Mandatory)] [string[]] $PodmanArgs,
+        [int] $TimeoutSeconds = 30
+    )
 
-    [pscustomobject]@{
-        IsReady   = ($exitCode -eq 0)
-        ErrorText = if ($exitCode -eq 0) { "" } else { ($output | Out-String).Trim() }
+    $outFile = [System.IO.Path]::GetTempFileName()
+    $errFile = [System.IO.Path]::GetTempFileName()
+    try {
+        $proc = Start-Process -FilePath "podman" -ArgumentList $PodmanArgs -NoNewWindow -PassThru `
+            -RedirectStandardOutput $outFile -RedirectStandardError $errFile
+
+        if (-not $proc.WaitForExit($TimeoutSeconds * 1000)) {
+            try { $proc.Kill($true) } catch {}
+            return [pscustomobject]@{ TimedOut = $true; ExitCode = $null; Output = "" }
+        }
+
+        $output = (Get-Content $outFile -Raw -ErrorAction SilentlyContinue) + (Get-Content $errFile -Raw -ErrorAction SilentlyContinue)
+        return [pscustomobject]@{ TimedOut = $false; ExitCode = $proc.ExitCode; Output = $output }
+    }
+    finally {
+        Remove-Item $outFile, $errFile -ErrorAction SilentlyContinue
     }
 }
 
-function Wait-PodmanReady {
-    param(
-        [int]$MaxAttempts = 10,
-        [int]$DelaySeconds = 2
-    )
-
-    $status = $null
-    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
-        $status = Get-PodmanReadiness
-        if ($status.IsReady) {
-            return $status
-        }
-
-        if ($attempt -lt $MaxAttempts) {
-            Start-Sleep -Seconds $DelaySeconds
-        }
-    }
-
-    return $status
+function Test-PodmanReady {
+    param([int]$TimeoutSeconds = 15)
+    $result = Invoke-PodmanWithTimeout -PodmanArgs @("info") -TimeoutSeconds $TimeoutSeconds
+    return (-not $result.TimedOut) -and ($result.ExitCode -eq 0)
 }
 
 function Ensure-PodmanReady {
@@ -65,22 +67,31 @@ function Ensure-PodmanReady {
         exit 1
     }
 
-    $status = Get-PodmanReadiness
-    if ($status.IsReady) {
+    if (Test-PodmanReady) {
         return
     }
 
     Write-Host "Podman non risulta attivo. Avvio della machine di default..." -ForegroundColor Yellow
-    & podman machine start
+    $start = Invoke-PodmanWithTimeout -PodmanArgs @("machine", "start") -TimeoutSeconds 90
 
-    $status = Wait-PodmanReady
-    if (-not $status.IsReady) {
-        Write-Host "Podman non e' partito correttamente. Verifica 'podman machine list' e lo stato della machine di default." -ForegroundColor Red
-        if ($status.ErrorText) {
-            Write-Host $status.ErrorText -ForegroundColor DarkRed
-        }
+    if ($start.TimedOut) {
+        Write-Host "'podman machine start' non ha risposto entro 90s." -ForegroundColor Red
+        Write-Host "Probabile stato di rete WSL2 incoerente (capita dopo lo sleep del PC.) Prova a mano: 'wsl --shutdown' seguito da 'podman machine start'." -ForegroundColor DarkRed
         exit 1
     }
+
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        if (Test-PodmanReady -TimeoutSeconds 10) {
+            return
+        }
+        if ($attempt -lt 3) { Start-Sleep -Seconds 2 }
+    }
+
+    Write-Host "Podman non e' partito correttamente. Verifica 'podman machine list' e lo stato della machine di default." -ForegroundColor Red
+    if ($start.Output) {
+        Write-Host $start.Output -ForegroundColor DarkRed
+    }
+    exit 1
 }
 
 Ensure-PodmanReady
